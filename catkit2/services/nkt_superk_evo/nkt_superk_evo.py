@@ -7,7 +7,6 @@ from enum import Enum
 import os
 import sys
 
-
 try:
     sdk_path = os.path.join(os.environ.get('NKTP_SDK_PATH'), 'Examples', 'DLL_Example_Python')
     if sdk_path is not None:
@@ -108,6 +107,7 @@ class NktSuperkEvo(Service):
         self.base_temperature = self.make_data_stream('base_temperature', 'float32', [1], 20)
         self.supply_voltage = self.make_data_stream('supply_voltage', 'float32', [1], 20)
         self.external_control_input = self.make_data_stream('external_control_input', 'float32', [1], 20)
+        self.interlock = self.make_data_stream('interlock', 'uint16', [1], 20)
 
         self.emission = self.make_data_stream('emission', 'uint8', [1], 20)
         self.power_setpoint = self.make_data_stream('power_setpoint', 'float32', [1], 20)
@@ -144,6 +144,10 @@ class NktSuperkEvo(Service):
             'varia_status': self.update_func(self.update_varia_status),
             'evo_status': self.update_func(self.update_evo_status)
         }
+
+        # define commands
+        self.make_command('software_interlock_set', self.software_interlock_set)
+        self.make_command('software_interlock_reset', self.software_interlock_reset)
 
         # Create a pool with a single worker to perform communication with the device.
         self.pool = ThreadPoolExecutor(max_workers=1)
@@ -195,6 +199,11 @@ class NktSuperkEvo(Service):
         control_input = self.get_external_control_input()
         self.external_control_input.submit_data(np.array([control_input], dtype='float32'))
 
+        interlock_lsb = self.get_interlock_lsb()
+        interlock_msb = self.get_interlock_msb()                 
+        interlock = 256*interlock_msb + interlock_lsb    
+        self.interlock.submit_data(np.array([interlock], dtype="uint16"))
+
     def update_varia_status(self):
         status = self.get_varia_status_bits()
 
@@ -232,6 +241,16 @@ class NktSuperkEvo(Service):
                 self.sleep(1)
 
         return func
+
+    def software_interlock_reset(self):
+        """ Send the interlock software RESET command to the EVO """
+        write_register(registerWriteU16, Evo.REG_INTERLOCK)(self, 1)
+        return None
+
+    def software_interlock_set(self):
+        """ Send the interlock software SET command to the EVO """
+        write_register(registerWriteU16, Evo.REG_INTERLOCK)(self, 0)
+        return None
 
     # Functions for the SuperK EVO
     get_base_temperature = read_register(registerReadS16, Evo.REG_BASE_TEMPERATURE, ratio=0.1)
