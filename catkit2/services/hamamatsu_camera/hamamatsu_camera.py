@@ -206,6 +206,9 @@ class HamamatsuCamera(Service):
             else:
                 self.make_property(name, lambda: getattr(self, name), lambda val: setattr(self, name, val))
 
+        # camera timeout for taking frames
+        self.timeout_millisec = self.config["timeout_millisec"]
+
         # Set device values from config file (set width and height before offsets)
         offset_x = self.config.get('offset_x', 0)
         offset_y = self.config.get('offset_y', 0)
@@ -283,14 +286,13 @@ class HamamatsuCamera(Service):
             raise RuntimeError(f'Dcam.cap_start() fails with error {self.cam.lasterr()}')
         self.is_acquiring.submit_data(np.array([1], dtype='int8'))
 
-        timeout_millisec = 2000
         try:
             i = 0
             while self.should_be_acquiring.is_set() and not self.should_shut_down:
                 if self.cam.lasterr().is_timeout():
                     self.log.warning('Timeout while waiting for frame')
-                if self.cam.wait_capevent_frameready(timeout_millisec) is False:
-                    raise RuntimeError(f'Dcam.wait_capevent_frameready({timeout_millisec}) fails with error {self.cam.lasterr()}')
+                if self.cam.wait_capevent_frameready( self.timeout_millisec) is False:
+                    raise RuntimeError(f'Dcam.wait_capevent_frameready({ self.timeout_millisec}) fails with error {self.cam.lasterr()}')
 
                 img = self.cam.buf_getlastframedata()
 
