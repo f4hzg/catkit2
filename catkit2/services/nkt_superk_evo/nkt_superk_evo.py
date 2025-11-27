@@ -4,6 +4,7 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from enum import Enum
+import zmq
 import os
 import sys
 
@@ -103,6 +104,11 @@ class NktSuperkEvo(Service):
         self.port = self.config['port']
 
     def open(self):
+        # open the port to the socket to publish laser status to the safety sign
+        self.context = zmq.Context()
+        self.safetysign_socket = self.context.socket(zmq.PUB)        
+        self.safetysign_socket.connect("tcp://{}:{}".format(self.config["safetysign_ip"], self.config["safetysign_port"]))
+
         # Make datastreams.
         self.base_temperature = self.make_data_stream('base_temperature', 'float32', [1], 20)
         self.supply_voltage = self.make_data_stream('supply_voltage', 'float32', [1], 20)
@@ -264,7 +270,14 @@ class NktSuperkEvo(Service):
     set_current_setpoint = write_register(registerWriteU16, Evo.REG_CURRENT_SETPOINT, ratio=0.1)
 
     get_emission = read_register(registerReadU8, Evo.REG_EMISSION, ratio=0.5)
-    set_emission = write_register(registerWriteU8, Evo.REG_EMISSION, ratio=0.5)
+#    set_emission = write_register(registerWriteU8, Evo.REG_EMISSION, ratio=0.5)
+    def set_emission(self, value):
+        if float(value) > 0:
+            self.safetysign_socket.send_string("LASER_ON")
+        res = write_register(registerWriteU8, Evo.REG_EMISSION, ratio=0.5)(self, value)
+        if float(value) == 0:
+            self.safetysign_socket.send_string("LASER_OFF")
+        return res
 
     get_setup_bits = read_register(registerReadU8, Evo.REG_SETUP_BITS)
     set_setup_bits = write_register(registerWriteU8, Evo.REG_SETUP_BITS)
