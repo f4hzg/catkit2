@@ -41,20 +41,10 @@ if default_dll_path is not None:
 else:
     raise ValueError('To use Thorlabs cube motors with Kinesis, you need to set the THORLABS_KINESIS_DLL_PATH environment variable.')
 
-clr.AddReference(default_dll_path + dll_name)
+clr.AddReference(default_dll_path + "/" + dll_name)
 
 from Thorlabs.Elliptec.ELLO_DLL import *
 import System
-
-def log(msg):
-    f = open("C:/Users/mnowak/hello.txt", "a")
-    f.write(msg+"\n")
-    f.close()    
-
-f = open("C:/Users/mnowak/hello.txt", "w")
-f.write("THORLABS_ELLIPTEC_BOARD LOG2\n")
-f.close()    
-
 
 class ThorlabsElliptecBoard(Service):
     _MAX_NUM_RETRIES = 3
@@ -67,7 +57,7 @@ class ThorlabsElliptecBoard(Service):
         # data stream for all addresses:
         self.current_position_streams = {}
         self.position_streams = {}
-        for k in range(int(self.min_address, 16), int(self.max_address, 16)):
+        for k in range(int(self.min_address, 16), int(self.max_address, 16)+1):
             self.current_position_streams['{:x}'.format(k).upper()] = self.make_data_stream('current_position_{}'.format(k), 'float64', [1], 20)
             self.position_streams['{:x}'.format(k).upper()] = self.make_data_stream('position_{}'.format(k), 'float64', [1], 20)
 
@@ -87,7 +77,6 @@ class ThorlabsElliptecBoard(Service):
                 deviceInfo=addressedDevice.DeviceInfo
                 deviceType=deviceInfo.DeviceType
                 for stri in deviceInfo.Description():
-                    log(stri)
                     if "Serial Number:" in stri:
                         serial_number = stri.split("Serial Number:")[1].strip()
                 self.addressedDevices[addressedDevice.get_Address()] = {"handle": addressedDevice, "serial_number": serial_number, "device_type": deviceType}
