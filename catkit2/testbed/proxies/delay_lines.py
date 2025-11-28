@@ -1,0 +1,55 @@
+#coding: utf8
+
+from ..service_proxy import ServiceProxy
+
+import numpy as np
+
+class DelayLinesProxy(ServiceProxy):
+    def __init__(self, *args, **kwargs):
+        super(DelayLinesProxy, self).__init__(*args, **kwargs)
+        self.actuator_names = self.config["actuators"]
+        self.ndls = len(self.actuator_names)
+        self.actuator_services = []
+        for k in range(self.ndls):
+            self.actuator_services.append(self._testbed.get_service(self.actuator_names[k]))
+        return None
+    
+    def get_positions(self, actuator_indices = None):
+        "Return the position of the actuators"
+        if actuator_indices is None:
+            actuator_indices = list(range(self.ndls))
+        positions = []
+        for k in range(len(actuator_indices)):
+            pos = self.actuator_services[actuator_indices[k]].current_position.get()[0]
+            positions.append(pos)
+        return positions
+    
+    def move_absolute(self, target_positions, actuator_indices = None):
+        """
+        Move the delay lines to the given target positions
+        param target_positions: an array of float values giving the absolute positions for the actuators
+        param (optional) actuator_indices: a list of indices of the actuator to move, i.e actuator actuator_indices[k] will move to target_position[k]
+        """
+        # if no indices are given, assume that the users wants to move everything
+        if actuator_indices is None:
+            actuator_indices = list(range(self.ndls))
+        if len(target_positions) != len(actuator_indices):
+            raise Exception("The number of positions should match the number of delay lines to move")
+        for k in range(len(actuator_indices)):
+            self.actuator_services[actuator_indices[k]].move_absolute(target_positions[k])
+        return None
+
+    def move_relative(self, distances, actuator_indices = None):
+        """
+        Move the delay lines to the given target positions
+        param distances: an array of float values giving the delta of positions for the actuators
+        param (optional) actuator_indices: a list of indices of the actuator to move, i.e actuator actuator_indices[k] will move by distances[k]
+        """        
+        # if no indices are given, assume that the users wants to move everything
+        if actuator_indices is None:
+            actuator_indices = list(range(self.ndls))
+        if len(distances) != len(actuator_indices):
+            raise Exception("The number of positions should match the number of delay lines to move")
+        for k in range(len(actuator_indices)):
+            self.actuator_services[actuator_indices[k]].move_relative(distances[k])
+        return None
