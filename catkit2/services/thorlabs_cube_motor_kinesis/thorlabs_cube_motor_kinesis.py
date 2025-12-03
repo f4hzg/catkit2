@@ -59,9 +59,12 @@ class ThorlabsCubeMotorKinesis(Service):
         self.serial_number = str(self.config['serial_number']).encode("UTF-8")
         self.update_interval = self.config['update_interval']
 
-        if self.cube_model == 'KDC101':
+        if self.cube_model == 'KST101':
+            dll_name = r"\Thorlabs.MotionControl.KCube.StepperMotor.dll"         
+            self.motor_type = 26 
+        elif self.cube_model == 'KDC101':
             dll_name = r"\Thorlabs.MotionControl.KCube.DCServo.dll"
-            self.motor_type = 27
+            self.motor_type = 27               
         elif self.cube_model == 'TDC001':
             dll_name = r"\Thorlabs.MotionControl.TCube.DCServo.dll"
             self.motor_type = 83
@@ -99,25 +102,45 @@ class ThorlabsCubeMotorKinesis(Service):
                 raise ValueError(f"Device with serial number {self.serial_number} not found in list of serial numbers: {serial_number_list.value}")
 
         # Open the device
-        self.lib.CC_Open(self.serial_number)
-        self.lib.CC_StartPolling(self.serial_number, c_int(200))
+        if self.motor_type == 26:
+            self.lib.SCC_Open(self.serial_number)
+            self.lib.SCC_StartPolling(self.serial_number, c_int(200))
+        else:
+            self.lib.CC_Open(self.serial_number)
+            self.lib.CC_StartPolling(self.serial_number, c_int(200))
 
         # Set up the device to convert real units to device units
         if self.stage_model in ['MTS25-Z8', 'MTS50-Z8', 'Z825B', 'Z806', 'Z812', 'Z925B']:  # Linear motors
-            steps_per_rev = c_double(512)
-            gear_box_ratio = c_double(67.49)
-            pitch_mm = c_double(1.0)
+            self.steps_per_rev = 512.0
+            self.gear_box_ratio = 67.49
+            self.pitch_mm = 1.0
+            self.unit = 'mm'
+        elif self.stage_model in ['ZST213B']:  # Linear motors
+            self.steps_per_rev = 49152.0
+            self.gear_box_ratio = 40.866
+            self.pitch_mm = 1.0
             self.unit = 'mm'
         elif self.stage_model in ['PRM1-Z8']:  # Rotary motor
-            steps_per_rev = c_double(1919.64186)
-            gear_box_ratio = c_double(1.0)
-            pitch_mm = c_double(1.0)
+            self.steps_per_rev = 1919.64186
+            self.gear_box_ratio = 1.0
+            self.pitch_mm = 1.0
             self.unit = 'deg'
         else:
             raise ValueError(f"Stage model {self.stage_model} not supported.")
 
         # Apply these values to the device
-        self.lib.CC_SetMotorParamsExt(self.serial_number, steps_per_rev, gear_box_ratio, pitch_mm)
+        # Note: in practice, this does not seem to be enough for the StepperMotor to be able to report device/real units from 
+        # real/device units. Calling SCC_GetDeviceValueFromRealUnit always seems to raise an error and gives 0.
+        if self.motor_type == 26:        
+            self.lib.SCC_SetMotorParamsExt(self.serial_number, 
+                                            c_double(self.steps_per_rev), 
+                                            c_double(self.gear_box_ratio), 
+                                            c_double(self.pitch_mm))
+        else:
+            self.lib.CC_SetMotorParamsExt(self.serial_number, 
+                                            c_double(self.steps_per_rev), 
+                                            c_double(self.gear_box_ratio), 
+                                            c_double(self.pitch_mm))
 
         # Read min, max, unit and model from service configuration.
         self.min_position_config = self.config['min_position']
@@ -127,12 +150,18 @@ class ThorlabsCubeMotorKinesis(Service):
         # Set the motor travel limits.
         min_position = c_double(self.min_position_config)
         max_position = c_double(self.max_position_config)
-        self.lib.CC_SetMotorTravelLimits(self.serial_number, min_position, max_position)
+        if self.motor_type == 26:
+            self.lib.SCC_SetMotorTravelLimits(self.serial_number, min_position, max_position)
+        else:
+            self.lib.CC_SetMotorTravelLimits(self.serial_number, min_position, max_position)
 
         # Get the motor travel limits.
         min_position = c_double(-1)
         max_position = c_double(-1)
-        self.lib.CC_GetMotorTravelLimits(self.serial_number, byref(min_position), byref(max_position))
+        if self.motor_type == 26:
+            self.lib.SCC_GetMotorTravelLimits(self.serial_number, byref(min_position), byref(max_position))
+        else:
+            self.lib.CC_GetMotorTravelLimits(self.serial_number, byref(min_position), byref(max_position))
         self.min_position_device = min_position.value
         self.max_position_device = max_position.value
 
@@ -179,11 +208,16 @@ class ThorlabsCubeMotorKinesis(Service):
 
     def close(self):
         self.motor_thread.join()
-
-        self.lib.CC_ClearMessageQueue(self.serial_number)
-        self.lib.CC_StopPolling(self.serial_number)
-        # Close the device
-        self.lib.CC_Close(self.serial_number)
+        if self.motor_type == 26:
+            self.lib.SCC_ClearMessageQueue(self.serial_number)
+            self.lib.SCC_StopPolling(self.serial_number)
+            # Close the device
+            self.lib.SCC_Close(self.serial_number)
+        else:
+            self.lib.CC_ClearMessageQueue(self.serial_number)
+            self.lib.CC_StopPolling(self.serial_number)
+            # Close the device
+            self.lib.CC_Close(self.serial_number)
 
     def set_current_position(self, position):
         """
@@ -191,14 +225,17 @@ class ThorlabsCubeMotorKinesis(Service):
 
         The unit is given in real-life units (mm if translation, deg if rotation).
         """
-        if self.min_position_config <= position <= self.max_position_config:
-            new_pos_real = c_double(position)  # in real units
-            new_pos_dev = c_int()
-            self.lib.CC_GetDeviceUnitFromRealValue(self.serial_number,
-                                                   new_pos_real,
-                                                   byref(new_pos_dev),
-                                                   0)
-            self.lib.CC_MoveToPosition(self.serial_number, new_pos_dev)
+        if self.min_position_config <= position <= self.max_position_config:       
+            if self.motor_type == 26:
+                self.lib.SCC_MoveToPosition(self.serial_number, c_int(self.getDeviceUnitFromRealValue(position, 0)))
+            else:
+                new_pos_real = c_double(position)  # in real units
+                new_pos_dev = c_int()   
+                self.lib.CC_GetDeviceUnitFromRealValue(self.serial_number,
+                                                    new_pos_real,
+                                                    byref(new_pos_dev),
+                                                    0)
+                self.lib.CC_MoveToPosition(self.serial_number, new_pos_dev)             
         else:
             self.log.warning('Motor not moving since commanded position is outside of configured range.')
             self.log.warning('Position limits: %f %s <= position <= %f %s.',
@@ -209,18 +246,29 @@ class ThorlabsCubeMotorKinesis(Service):
         self.get_current_position()
 
     def get_current_position(self):
-        current_position = self.lib.CC_GetPosition(self.serial_number)
-        real_unit = c_double()
-        self.lib.CC_GetRealValueFromDeviceUnit(self.serial_number, current_position, byref(real_unit), 0)
-        self.current_position.submit_data(np.array([real_unit.value], dtype='float64'))
+        if self.motor_type == 26:         
+            current_position = self.lib.SCC_GetPosition(self.serial_number)
+            real_unit = self.getRealValueFromDeviceUnit(current_position, 0)
+        else:
+            real_unit = c_double()            
+            current_position = self.lib.CC_GetPosition(self.serial_number)
+            self.lib.CC_GetRealValueFromDeviceUnit(self.serial_number, current_position, byref(real_unit), 0)
+            real_unit = real_unit.value
+        self.current_position.submit_data(np.array([real_unit], dtype='float64'))
 
     def wait_for_completion(self):
         message_type = c_ushort()
         message_id = c_ushort()
         message_data = c_ulong()
         while message_id.value != 0 or message_type.value != 2:
-            self.lib.CC_WaitForMessage(self.serial_number, byref(message_type), byref(message_id), byref(message_data))
-        self.lib.CC_ClearMessageQueue(self.serial_number)
+            if self.motor_type == 26:
+                self.lib.SCC_WaitForMessage(self.serial_number, byref(message_type), byref(message_id), byref(message_data))
+            else:
+                self.lib.CC_WaitForMessage(self.serial_number, byref(message_type), byref(message_id), byref(message_data))
+        if self.motor_type == 26:
+            self.lib.SCC_ClearMessageQueue(self.serial_number)
+        else:
+            self.lib.CC_ClearMessageQueue(self.serial_number)
         return message_type.value, message_id.value, message_data.value
 
     def home(self):
@@ -230,8 +278,12 @@ class ThorlabsCubeMotorKinesis(Service):
         This will block until the motor has finished homing.
         """
         # Home device
-        self.lib.CC_ClearMessageQueue(self.serial_number)
-        self.lib.CC_Home(self.serial_number)
+        if self.motor_type == 26:
+            self.lib.SCC_ClearMessageQueue(self.serial_number)
+            self.lib.SCC_Home(self.serial_number)
+        else:
+            self.lib.CC_ClearMessageQueue(self.serial_number)
+            self.lib.CC_Home(self.serial_number)
         self.log.info("Device %s homing\r\n", self.serial_number)
 
         # Wait for completion
@@ -242,6 +294,15 @@ class ThorlabsCubeMotorKinesis(Service):
         # Update the current position data stream.
         self.get_current_position()
 
+    def getDeviceUnitFromRealValue(self, real_value, unit_type):
+        if unit_type != 0:
+            raise ValueError("Conversion method not implemented for unit_type != 0")
+        return int((real_value / self.pitch_mm ) * self.steps_per_rev * self.gear_box_ratio)
+
+    def getRealValueFromDeviceUnit(self, device_unit, unit_type):
+        if unit_type != 0:
+            raise ValueError("Conversion method not implemented for unit_type != 0")        
+        return (device_unit / (self.gear_box_ratio * self.steps_per_rev) ) * self.pitch_mm 
 
 if __name__ == '__main__':
     service = ThorlabsCubeMotorKinesis()
