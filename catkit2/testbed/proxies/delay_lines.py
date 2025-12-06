@@ -53,3 +53,14 @@ class DelayLinesProxy(ServiceProxy):
         for k in range(len(actuator_indices)):
             self.actuator_services[actuator_indices[k]].move_relative(distances[k])
         return None
+    
+    def home(self, actuator_indices = None):
+        """
+        Home the actuators of the delay lines
+        param (optional) actuator_indices: a list of indices of the actuator to home, i.e actuator actuator_indices[k] will move by distances[k]
+        """    
+        # if no indices are given, assume that the users wants to home everything
+        if actuator_indices is None:
+            actuator_indices = list(range(self.ndls))        
+        for k in range(len(actuator_indices)):
+            self.actuator_services[actuator_indices[k]].home()
