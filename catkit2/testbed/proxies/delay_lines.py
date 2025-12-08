@@ -76,7 +76,7 @@ class DelayLinesProxy(ServiceProxy):
         """
         if not(named_position in self.config['positions']):
             ValueError("Position {} not defined in the configguration".format(named_position)) 
-        positions = self.config["position"][named_position]
+        positions = self.config["positions"][named_position]
         self.move_absolute(positions)
         return None
 
