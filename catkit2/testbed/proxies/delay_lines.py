@@ -14,6 +14,22 @@ class DelayLinesProxy(ServiceProxy):
             self.actuator_services.append(self._testbed.get_service(self.actuator_names[k]))
         return None
     
+    def set_velocity(self, velocities, actuator_indices = None):
+        """
+        Set the ,ax velocity of the lines (in mm/s)
+        param velocity: an array of float values giving the velocities for the actuators
+        param (optional) actuator_indices: a list of indices of the actuator to move, i.e actuator actuator_indices[k] will move to target_position[k]
+        """
+        # if no indices are given, assume that the users wants to move everything
+        if actuator_indices is None:
+            actuator_indices = list(range(self.ndls))
+        if len(velocities) != len(actuator_indices):
+            raise Exception("The number of positions should match the number of delay lines to move")
+        for k in range(len(actuator_indices)):
+            datastream = self.actuator_services[actuator_indices[k]].velocity_parameters
+            datastream.submit_data(np.array([velocities[k], 0.5], dtype='float64'))
+        return None    
+    
     def get_positions(self, actuator_indices = None):
         "Return the position of the actuators"
         if actuator_indices is None:
