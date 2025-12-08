@@ -191,8 +191,13 @@ class ThorlabsCubeMotorKinesis(Service):
         # Submit motor starting position to current_position data stream
         self.get_current_position()
 
-        # set motor to default velocity
-        self.setVelocityParameters(self.config["default_acceleration"], self.config["default_velocity"])
+        # create data frame for velocity parameters and set default velocity
+        self.velocity_parameters = self.make_data_stream('velocity_parameters', 'float64', [2], 5)
+
+        # set motor to default velocity and submit to datastream for good measure
+        self.current_velocity_parameters = np.array(self.config["default_velocity_parameters"], dtype = 'float64')
+        self.setVelocityParameters(*self.current_velocity_parameters)
+        self.velocity_parameters.submit_data(np.array(self.current_velocity_parameters, dtype='float64'))
 
         self.make_command('home', self.home)
 
@@ -201,6 +206,11 @@ class ThorlabsCubeMotorKinesis(Service):
 
     def monitor_motor(self):
         while not self.should_shut_down:
+            # check for update of the acceleration and velocity
+            frame = self.velocity_parameters.get_latest_frame()
+            new_velocity_parameters = frame.data
+            if np.any(new_velocity_parameters != self.current_velocity_parameters):
+                self.setVelocityParameters(new_velocity_parameters[0], new_velocity_parameters[1])
             try:
                 # Get an update for the motor position.
                 frame = self.command.get_next_frame(10)
@@ -303,7 +313,7 @@ class ThorlabsCubeMotorKinesis(Service):
         # Update the current position data stream.
         self.get_current_position()
 
-    def setVelocityParameters(self, acceleration, velocity):
+    def setVelocityParameters(self, velocity, acceleration):
         """
         Set the acceleration and maximum velocity for motor motion. Values are given in real units
         (real unit of position/s for velocity and /s^2 for acceleration)
@@ -314,6 +324,7 @@ class ThorlabsCubeMotorKinesis(Service):
             self.lib.SCC_SetVelParams(self.serial_number, acc, vel)
         else:
             self.lib.CC_SetVelParams(self.serial_number, acc, vel)
+        self.current_velocity_parameters = np.array([velocity, acceleration], dtype = 'float64')    
 
     def getDeviceUnitFromRealValue(self, real_value, unit):
         """
