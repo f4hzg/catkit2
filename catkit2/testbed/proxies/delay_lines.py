@@ -69,7 +69,17 @@ class DelayLinesProxy(ServiceProxy):
         for k in range(len(actuator_indices)):
             self.actuator_services[actuator_indices[k]].move_relative(distances[k])
         return None
-    
+
+    def set_position(self, named_position):
+        """
+        Move the delay lines to a set position as defined in the config yml
+        """
+        if not(named_position in self.config['positions']):
+            ValueError("Position {} not defined in the configguration".format(named_position)) 
+        positions = self.config["position"][named_position]
+        self.move_absolute(positions)
+        return None
+
     def home(self, actuator_indices = None):
         """
         Home the actuators of the delay lines
