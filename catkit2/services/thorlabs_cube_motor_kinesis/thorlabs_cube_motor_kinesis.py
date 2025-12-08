@@ -304,7 +304,16 @@ class ThorlabsCubeMotorKinesis(Service):
         self.get_current_position()
 
     def setVelocityParameters(self, acceleration, velocity):
-        return None
+        """
+        Set the acceleration and maximum velocity for motor motion. Values are given in real units
+        (real unit of position/s for velocity and /s^2 for acceleration)
+        """
+        acc = c_int(int(self.getDeviceUnitFromRealValue(acceleration, 2)))
+        vel = c_int(int(self.getDeviceUnitFromRealValue(velocity, 10)))
+        if self.motor_type == 26:        
+            self.lib.SCC_SetVelParams(self.serial_number, acc, vel)
+        else:
+            self.lib.CC_SetVelParams(self.serial_number, acc, vel)
 
     def getDeviceUnitFromRealValue(self, real_value, unit):
         """
