@@ -114,16 +114,22 @@ class ThorlabsCubeMotorKinesis(Service):
             self.steps_per_rev = 512.0
             self.gear_box_ratio = 67.49
             self.pitch_mm = 1.0
+            # conversion factors. Index 0 for position, 1 for velocity, 2 for acceleration. Comes from Thorlabs doc.
+            self.conversion_factors = [34554.88, None, None]             
             self.unit = 'mm'
         elif self.stage_model in ['ZST213B']:  # Linear motors
             self.steps_per_rev = 49152.0
             self.gear_box_ratio = 40.866
             self.pitch_mm = 1.0
+            # conversion factors. Index 0 for position, 1 for velocity, 2 for acceleration. Comes from Thorlabs doc.
+            self.conversion_factors = [2008645.63, 107824097.5, 22097.3] 
             self.unit = 'mm'
         elif self.stage_model in ['PRM1-Z8']:  # Rotary motor
             self.steps_per_rev = 1919.64186
             self.gear_box_ratio = 1.0
             self.pitch_mm = 1.0
+            # conversion factors. Index 0 for position, 1 for velocity, 2 for acceleration. Comes from Thorlabs doc.
+            self.conversion_factors = [1919.64186, None, None] 
             self.unit = 'deg'
         else:
             raise ValueError(f"Stage model {self.stage_model} not supported.")
@@ -185,6 +191,14 @@ class ThorlabsCubeMotorKinesis(Service):
         # Submit motor starting position to current_position data stream
         self.get_current_position()
 
+        # create data frame for velocity parameters and set default velocity
+        self.velocity_parameters = self.make_data_stream('velocity_parameters', 'float64', [2], 5)
+
+        # set motor to default velocity and submit to datastream for good measure
+        self.current_velocity_parameters = np.array(self.config["default_velocity_parameters"], dtype = 'float64')
+        self.setVelocityParameters(*self.current_velocity_parameters)
+        self.velocity_parameters.submit_data(np.array(self.current_velocity_parameters, dtype='float64'))
+
         self.make_command('home', self.home)
 
         self.motor_thread = threading.Thread(target=self.monitor_motor)
@@ -192,6 +206,11 @@ class ThorlabsCubeMotorKinesis(Service):
 
     def monitor_motor(self):
         while not self.should_shut_down:
+            # check for update of the acceleration and velocity
+            frame = self.velocity_parameters.get_latest_frame()
+            new_velocity_parameters = frame.data
+            if np.any(new_velocity_parameters != self.current_velocity_parameters):
+                self.setVelocityParameters(new_velocity_parameters[0], new_velocity_parameters[1])
             try:
                 # Get an update for the motor position.
                 frame = self.command.get_next_frame(10)
@@ -227,7 +246,7 @@ class ThorlabsCubeMotorKinesis(Service):
         """
         if self.min_position_config <= position <= self.max_position_config:       
             if self.motor_type == 26:
-                self.lib.SCC_MoveToPosition(self.serial_number, c_int(self.getDeviceUnitFromRealValue(position, 0)))
+                self.lib.SCC_MoveToPosition(self.serial_number, c_int(int(self.getDeviceUnitFromRealValue(position, 0))))
             else:
                 new_pos_real = c_double(position)  # in real units
                 new_pos_dev = c_int()   
@@ -294,15 +313,40 @@ class ThorlabsCubeMotorKinesis(Service):
         # Update the current position data stream.
         self.get_current_position()
 
-    def getDeviceUnitFromRealValue(self, real_value, unit_type):
-        if unit_type != 0:
-            raise ValueError("Conversion method not implemented for unit_type != 0")
-        return int((real_value / self.pitch_mm ) * self.steps_per_rev * self.gear_box_ratio)
+    def setVelocityParameters(self, velocity, acceleration):
+        """
+        Set the acceleration and maximum velocity for motor motion. Values are given in real units
+        (real unit of position/s for velocity and /s^2 for acceleration)
+        """
+        acc = c_int(int(self.getDeviceUnitFromRealValue(acceleration, 2)))
+        vel = c_int(int(self.getDeviceUnitFromRealValue(velocity, 1)))
+        if self.motor_type == 26:        
+            self.lib.SCC_SetVelParams(self.serial_number, acc, vel)
+        else:
+            self.lib.CC_SetVelParams(self.serial_number, acc, vel)
+        self.current_velocity_parameters = np.array([velocity, acceleration], dtype = 'float64')    
 
-    def getRealValueFromDeviceUnit(self, device_unit, unit_type):
-        if unit_type != 0:
-            raise ValueError("Conversion method not implemented for unit_type != 0")        
-        return (device_unit / (self.gear_box_ratio * self.steps_per_rev) ) * self.pitch_mm 
+    def getDeviceUnitFromRealValue(self, real_value, unit):
+        """
+        unit is 0 for position, 1 for velocity, 2 for acceleration
+        """
+        if not(unit in [0, 1, 2]):
+            raise ValueError("Unit type should be 0, 1, or 2 in conversion")
+        conversion_factor = self.conversion_factors[unit]
+        if conversion_factor is None:
+            raise ValueError("Conversion not available for this type and motor")
+        return real_value * conversion_factor
+
+    def getRealValueFromDeviceUnit(self, device_unit, unit):
+        """
+        unit is 0 for position, 1 for velocity, 2 for acceleration
+        """
+        if not(unit in [0, 1, 2]):
+            raise ValueError("Unit type should be 0, 1, or 2 in conversion")
+        conversion_factor = self.conversion_factors[unit]
+        if conversion_factor is None:
+            raise ValueError("Conversion not available for this type and motor")
+        return device_unit / conversion_factor
 
 if __name__ == '__main__':
     service = ThorlabsCubeMotorKinesis()
