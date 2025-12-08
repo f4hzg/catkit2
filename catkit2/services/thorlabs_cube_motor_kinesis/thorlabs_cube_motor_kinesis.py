@@ -236,7 +236,7 @@ class ThorlabsCubeMotorKinesis(Service):
         """
         if self.min_position_config <= position <= self.max_position_config:       
             if self.motor_type == 26:
-                self.lib.SCC_MoveToPosition(self.serial_number, c_int(self.getDeviceUnitFromRealValue(position, 0)))
+                self.lib.SCC_MoveToPosition(self.serial_number, c_int(int(self.getDeviceUnitFromRealValue(position, 0))))
             else:
                 new_pos_real = c_double(position)  # in real units
                 new_pos_dev = c_int()   
@@ -309,7 +309,7 @@ class ThorlabsCubeMotorKinesis(Service):
         (real unit of position/s for velocity and /s^2 for acceleration)
         """
         acc = c_int(int(self.getDeviceUnitFromRealValue(acceleration, 2)))
-        vel = c_int(int(self.getDeviceUnitFromRealValue(velocity, 10)))
+        vel = c_int(int(self.getDeviceUnitFromRealValue(velocity, 1)))
         if self.motor_type == 26:        
             self.lib.SCC_SetVelParams(self.serial_number, acc, vel)
         else:
