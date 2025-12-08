@@ -114,16 +114,22 @@ class ThorlabsCubeMotorKinesis(Service):
             self.steps_per_rev = 512.0
             self.gear_box_ratio = 67.49
             self.pitch_mm = 1.0
+            # conversion factors. Index 0 for position, 1 for velocity, 2 for acceleration. Comes from Thorlabs doc.
+            self.conversion_factors = [34554.88, None, None]             
             self.unit = 'mm'
         elif self.stage_model in ['ZST213B']:  # Linear motors
             self.steps_per_rev = 49152.0
             self.gear_box_ratio = 40.866
             self.pitch_mm = 1.0
+            # conversion factors. Index 0 for position, 1 for velocity, 2 for acceleration. Comes from Thorlabs doc.
+            self.conversion_factors = [2008645.63, 107824097.5, 22097.3] 
             self.unit = 'mm'
         elif self.stage_model in ['PRM1-Z8']:  # Rotary motor
             self.steps_per_rev = 1919.64186
             self.gear_box_ratio = 1.0
             self.pitch_mm = 1.0
+            # conversion factors. Index 0 for position, 1 for velocity, 2 for acceleration. Comes from Thorlabs doc.
+            self.conversion_factors = [1919.64186, None, None] 
             self.unit = 'deg'
         else:
             raise ValueError(f"Stage model {self.stage_model} not supported.")
@@ -294,15 +300,27 @@ class ThorlabsCubeMotorKinesis(Service):
         # Update the current position data stream.
         self.get_current_position()
 
-    def getDeviceUnitFromRealValue(self, real_value, unit_type):
-        if unit_type != 0:
-            raise ValueError("Conversion method not implemented for unit_type != 0")
-        return int((real_value / self.pitch_mm ) * self.steps_per_rev * self.gear_box_ratio)
+def getDeviceUnitFromRealValue(real_value, unit):
+    """
+    unit is 0 for position, 1 for velocity, 2 for acceleration
+    """
+    if not(unit in [0, 1, 2]):
+        raise ValueError("Unit type should be 0, 1, or 2 in conversion")
+    conversion_factor = self.conversion_factors[unit]
+    if conversion_factor is None:
+        raise ValueError("Conversion not available for this type and motor")
+    return real_value * conversion_factor
 
-    def getRealValueFromDeviceUnit(self, device_unit, unit_type):
-        if unit_type != 0:
-            raise ValueError("Conversion method not implemented for unit_type != 0")        
-        return (device_unit / (self.gear_box_ratio * self.steps_per_rev) ) * self.pitch_mm 
+def getRealValueFromDeviceUnit(device_unit, unit):
+    """
+    unit is 0 for position, 1 for velocity, 2 for acceleration
+    """
+    if not(unit in [0, 1, 2]):
+        raise ValueError("Unit type should be 0, 1, or 2 in conversion")
+    conversion_factor = self.conversion_factors[unit]
+    if conversion_factor is None:
+        raise ValueError("Conversion not available for this type and motor")
+    return device_unit / conversion_factor
 
 if __name__ == '__main__':
     service = ThorlabsCubeMotorKinesis()
