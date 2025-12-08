@@ -191,6 +191,9 @@ class ThorlabsCubeMotorKinesis(Service):
         # Submit motor starting position to current_position data stream
         self.get_current_position()
 
+        # set motor to default velocity
+        self.setVelocityParameters(self.config["default_acceleration"], self.config["default_velocity"])
+
         self.make_command('home', self.home)
 
         self.motor_thread = threading.Thread(target=self.monitor_motor)
@@ -300,27 +303,30 @@ class ThorlabsCubeMotorKinesis(Service):
         # Update the current position data stream.
         self.get_current_position()
 
-def getDeviceUnitFromRealValue(real_value, unit):
-    """
-    unit is 0 for position, 1 for velocity, 2 for acceleration
-    """
-    if not(unit in [0, 1, 2]):
-        raise ValueError("Unit type should be 0, 1, or 2 in conversion")
-    conversion_factor = self.conversion_factors[unit]
-    if conversion_factor is None:
-        raise ValueError("Conversion not available for this type and motor")
-    return real_value * conversion_factor
+    def setVelocityParameters(self, acceleration, velocity):
+        return None
 
-def getRealValueFromDeviceUnit(device_unit, unit):
-    """
-    unit is 0 for position, 1 for velocity, 2 for acceleration
-    """
-    if not(unit in [0, 1, 2]):
-        raise ValueError("Unit type should be 0, 1, or 2 in conversion")
-    conversion_factor = self.conversion_factors[unit]
-    if conversion_factor is None:
-        raise ValueError("Conversion not available for this type and motor")
-    return device_unit / conversion_factor
+    def getDeviceUnitFromRealValue(self, real_value, unit):
+        """
+        unit is 0 for position, 1 for velocity, 2 for acceleration
+        """
+        if not(unit in [0, 1, 2]):
+            raise ValueError("Unit type should be 0, 1, or 2 in conversion")
+        conversion_factor = self.conversion_factors[unit]
+        if conversion_factor is None:
+            raise ValueError("Conversion not available for this type and motor")
+        return real_value * conversion_factor
+
+    def getRealValueFromDeviceUnit(self, device_unit, unit):
+        """
+        unit is 0 for position, 1 for velocity, 2 for acceleration
+        """
+        if not(unit in [0, 1, 2]):
+            raise ValueError("Unit type should be 0, 1, or 2 in conversion")
+        conversion_factor = self.conversion_factors[unit]
+        if conversion_factor is None:
+            raise ValueError("Conversion not available for this type and motor")
+        return device_unit / conversion_factor
 
 if __name__ == '__main__':
     service = ThorlabsCubeMotorKinesis()
