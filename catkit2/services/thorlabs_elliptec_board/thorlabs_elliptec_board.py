@@ -47,6 +47,12 @@ from Thorlabs.Elliptec.ELLO_DLL import *
 import System
 
 class ThorlabsElliptecBoard(Service):
+    """
+    Thorlabs Elliptec systems are connected to an interface board. This class represents this interface board. A number of potentially different
+    elliptec systems can be connected to the interface board and will be represented ax Proxies talking to this central class. The role of this
+    class is to centralize communication to the single USB port, and forward commands. Since different types of systems can be connected,
+    the commands need to be interpreted differently.
+    """
     _MAX_NUM_RETRIES = 3
 
     def __init__(self):
@@ -62,6 +68,9 @@ class ThorlabsElliptecBoard(Service):
             self.position_streams['{:x}'.format(k).upper()] = self.make_data_stream('position_{}'.format(k), 'float64', [1], 20)
 
     def open(self): 
+        """
+        Opens the USB port and connectt to the interface board. 
+        """
         # Connect to device
         ELLDevicePort.Connect(self.port)
         ellDevices=ELLDevices()
@@ -123,25 +132,31 @@ class ThorlabsElliptecBoard(Service):
         return None
 
     def get_current_position(self, address):
+        """
+        returns the current position of the device at the given address. Depending on the type of device, the exact meaning and unit
+        of this position can be different (i.e. an angle in deg for a rotation stage; a position in mm for slider, etc.)
+        """
         handle, device_type = self.get_device(address)
         current_position = System.Decimal.ToDouble(handle.get_Position())
         self.current_position_streams[address].submit_data(np.array([current_position], dtype='float64'))
 
     def set_position(self, address, position):
         """
-        Attempt to move slider to given position. Only available on sliders.
+        move the device at the given address to the given absolute position. Depending on the type of device, the exact meaning and unit
+        of this position can be different (i.e. an angle in deg for a rotation stage; a position in mm for slider, etc.)
         """
         handle, device_type = self.get_device(address)
-        if not(device_type in [DeviceID.DeviceTypes.Shutter]):
+        if (device_type in [DeviceID.DeviceTypes.Shutter, DeviceID.DeviceTypes.RotaryStage18]):
+            try:
+                if position == self.current_position_streams[address].get()[0]:
+                    return
+            except Exception:
+                # No previous position known.
+                pass
+            handle.MoveAbsolute(System.Decimal(position))
+            self.current_position_streams[address].submit_data(np.array([position], "float64"))        
+        else:
             raise ValueError("Function not available for this type of device.")
-        try:
-            if position == self.current_position_streams[address].get()[0]:
-                return
-        except Exception:
-            # No previous position known.
-            pass
-        handle.MoveAbsolute(System.Decimal(position))
-        self.current_position_streams[address].submit_data(np.array([position], "float64"))
         return None
 
 if __name__ == '__main__':
