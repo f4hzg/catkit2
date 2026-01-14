@@ -105,6 +105,7 @@ thorlabs_mcls1 = "catkit2.testbed.proxies.thorlabs_mcls1:ThorlabsMcls1"
 web_power_switch = "catkit2.testbed.proxies.web_power_switch:WebPowerSwitchProxy"
 delay_lines = "catkit2.testbed.proxies.delay_lines:DelayLinesProxy"
 shutters = "catkit2.testbed.proxies.shutters:ShuttersProxy"
+spectro_camera = "catkit2.testbed.proxies.spectro_camera:SpectroCameraProxy"
 
 [project.scripts]
 mtop = "catkit2.tui.mtop:main"
