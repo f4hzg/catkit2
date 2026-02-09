@@ -25,6 +25,17 @@ class ThorlabsElliptecRotationStageProxy(ServiceProxy):
         position = self.current_position.get()[0]
         return position        
 
+    def set_named_position(self, named_position):
+        """
+        A convenience method which attempts to resolve and set the given position name based on the list given in the config file
+        """
+        if named_position in self.config["positions"].keys():
+            position = self.config["positions"][named_position]
+        else:
+            raise Exception("{} is not in the list of available positions.".format(named_position))
+        self.move_absolute(position)
+        return None
+
     def move_absolute(self, position):
         """
         Move the rotation stage to the requested position (in deg)
